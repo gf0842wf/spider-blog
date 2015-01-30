@@ -25,6 +25,9 @@ python(可在url里替换)
 
 当遇到blog id已经存在时,说明后面的blog已经爬过,终止本次爬取,等待下次
 
+# 配置 #
+
+`spider/etc/blog/default.json`
 
 # database设计(mongodb -- spider) #
 
