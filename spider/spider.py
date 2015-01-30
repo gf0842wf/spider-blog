@@ -6,6 +6,12 @@ import requests
 import logging
 import lxml.html
 import time
+try:
+    import ujson as json
+except ImportError:
+    import json
+
+import re
 
 logger = logging.getLogger(__name__)
 now_date = lambda: time.strftime("%Y-%m-%d %X")
@@ -23,7 +29,7 @@ class BlogSpider(gevent.Greenlet):
         names = ['src', 'url', 'pool_size']
         [setattr(self, '_%s' % name, options[name]) for name in names] 
         
-        self._max_page = options.get('max_page') or 10000
+        self._max_page = options.get('max_page') or 50
         self._headers.update(options.get('headers', {}))
         self._pool = Pool(size=self._pool_size)
         self._handle = None
@@ -50,16 +56,16 @@ class BlogSpider(gevent.Greenlet):
     def oschina_parse_page(self, r):
         '''解析oschina page
         '''
-        assert r.encoding == 'UTF-8'
+        assert r.encoding.upper() == 'UTF-8'
         
         try:
-            html = lxml.html.fromstring(r.content)
-            ul = html.xpath('//*[@id="results"]')
+            html = lxml.html.fromstring(r.text)  # r.content
+            ul = html.xpath('//*[@id="results"]')[0]
         except:
             logger.warn('ul xpath parse except', exc_info=1)
             raise StopIteration
         
-        for li in ul[0]:
+        for li in ul:
             try:
                 link = li.find('h3/a').attrib['href']
                 title = li.find('h3/a').text_content()
@@ -75,6 +81,43 @@ class BlogSpider(gevent.Greenlet):
             
             yield (title, link, date, author, summary)
             
+    def csdn_parse_page(self, r):
+        '''解析csdn page
+        '''
+        assert r.encoding.upper() == 'UTF-8'
+        
+        try:
+            html = lxml.html.fromstring(r.text)  # 这里用r.content会乱码
+            try:
+                raw = html.xpath('//script[13]/text()')[0]  # 不适用老版本lxml
+            except:
+                logger.warn('need latest lxml')
+                raw = html.xpath('//script')[12].text
+            data = re.findall(r'\r\nvar data = (.+);\r\n', raw)[0]
+            data = json.loads(data)
+        except:
+            logger.warn('raw xpath parse except', exc_info=1)
+            raise StopIteration
+        
+        ul = data['result']
+        for li in ul:
+            try:
+                link = li['url']
+                title = li['title']
+                summary = ''
+                date = time.strftime("%Y-%m-%d",
+                                     time.localtime(time.mktime(time.strptime(li['created_at'], '%Y%m%d%H')))
+                                     )
+                author = li['user_name']
+            except:
+                logger.warn('li dict data except', exc_info=1)
+                raise StopIteration
+             
+            if self.exist(link):
+                raise StopIteration
+             
+            yield (title, link, date, author, summary)
+            
     def save(self, title, link, date, author, summary):
         blog = {'src':self._src,
                 'title':title,
@@ -82,7 +125,7 @@ class BlogSpider(gevent.Greenlet):
                 'date':date,
                 'author':author,
                 'summary':summary,
-                'spider_date': now_date()
+                'spider_date':now_date()
                 }
         mondb.blog.insert(blog)
         
@@ -90,7 +133,7 @@ class BlogSpider(gevent.Greenlet):
         r = self.page_n(i)
         if not r: return
         for title, link, date, author, summary in self._handle(r):
-            logger.warn('insert to mongo title: %s', title)
+            logger.info('insert to %s mongo title: %s', self._src, repr(title))
             self.save(title, link, date, author, summary)
         
     def crawling(self):

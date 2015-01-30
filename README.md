@@ -36,7 +36,7 @@ python(可在url里替换)
         {
             "src":"", # 来源: 'oschina', 'csdn', 'v2ex', 'cnblogs'
             "title":"",
-            "link":"", #博客链接,唯一索引
+            "link":"", # 博客链接,唯一索引
             "date":"", # '%Y-%m-%d'
             "author":"",
             "summary":"",

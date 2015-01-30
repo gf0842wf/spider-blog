@@ -11,6 +11,8 @@ import logging
 from settings import settings
 from path import HOME_DIR
 
+logger = logging.getLogger(__name__)
+
 # 分析参数
 ARGS = argparse.ArgumentParser(description='blog spider')
 
@@ -20,7 +22,7 @@ ARGS.add_argument(
 
 ARGS.add_argument(
     '--loglevel', '-L', action='store', dest='loglevel',
-    default='WARN', type=str, help='log level(DEBUG, INFO, WARN, ERROR).')
+    default='INFO', type=str, help='log level(DEBUG, INFO, WARN, ERROR).')
 
 ARGS.add_argument(
     '--settings', '-s', action='store', dest='settings',
@@ -41,14 +43,28 @@ def initialize():
 def run():
     from spider import BlogSpider
     
-    optionses = settings['BLOGS']
-    for options in optionses:
-        bs = BlogSpider(**options)
-        bs.start()
+    while True:
+        settings.load(os.path.join(HOME_DIR, ARGS.settings))  # reload settings
+        optionses = settings['BLOGS']
+        
+        blog_spiders = []
+        
+        for options in optionses:
+            bs = BlogSpider(**options)
+            bs.start()
+            blog_spiders.append(bs)
     
-    gevent.wait()
+        gevent.joinall(blog_spiders)
+        
+        logger.info('spider over, wait next')
+        
+        gevent.sleep(3600 * 24)  # 一天爬一次
+    
     
 def main():
+    reload(sys)
+    encoding = 'cp936' if sys.platform == 'win32' else 'utf-8'
+    sys.setdefaultencoding(encoding)
     initialize()
     run()
 
@@ -57,4 +73,4 @@ main()
 gevent.wait()
 
 # cd spider-blog
-# python spider --loglevel WARN --settings etc/blog/default.json
+# python spider --loglevel INFO --settings etc/blog/default.json
